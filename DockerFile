@@ -1,0 +1,42 @@
+FROM openjdk:17.0.1-jdk-oracle as build
+#Estamos indicando que o Build da aplicação será gerado a partir de uma imagem contendo a versão 17 do Java, rodando sobre o Linux numa
+# versão minimalista, ou seja, apenas o necessário para executar o Java 17. Neste momento será feito o download da imagem contendo o Java 17. 
+#Observe que no final do nome da imagem, temos o alias as build, indicando que o Java 17 será executado nesta etapa em modo Build.
+
+WORKDIR /workspace/app
+#Estamos indicando que dentro do nosso container, o Build da nossa aplicação será gerado dentro da pasta /workspace/app.
+
+COPY mvnw .
+COPY .mvn .mvn
+COPY pom.xml .
+COPY src src
+#Copia o projeto do Repositório do Github para a pasta /workspace/app.
+
+RUN chmod -R 777 ./mvnw
+# Autoriza a execução do Maven (mvnw) dentro da pasta /workspace/app. Sem este comando, o Render devolverá o erro: 
+#Permission Denied! (Permissão negada)
+
+RUN ./mvnw install -DskipTests
+#Gera o Build da nossa aplicação, excluindo os testes, porquê em produção eles são desnecessários. Neste momento será feito o download 
+#de todas as dependências do projeto do Repositório central do Maven e o arquivo JAR será criado.
+
+RUN mkdir -p target/dependency && (cd target/dependency; jar -xf ../*.jar)
+#Cria a pasta target/dependency, e na sequência descompacta o arquivo .JAR que foi gerado. Ao descompactar o JAR, está sendo extraída uma 
+#versão compilada do código, ou seja, pronta para executar.
+
+FROM openjdk:17.0.1-jdk-oracle
+#Indica que a nossa aplicação será executada através da imagem da versão 17 do Java, que já foi obtida via download.
+
+VOLUME /tmp
+#Cria um volume chamado /tmp para armazenar os arquivos temporários.
+
+ARG DEPENDENCY=/workspace/app/target/dependency
+#Indica onde os arquivos e pastas do Build do projeto serão gravados.
+
+COPY --from=build ${DEPENDENCY}/BOOT-INF/lib /app/lib
+COPY --from=build ${DEPENDENCY}/META-INF /app/META-INF
+COPY --from=build ${DEPENDENCY}/BOOT-INF/classes /app
+#Copia todos os arquivos e pastas gerados no Build da aplicação, na pasta /workspace/app/target/dependency, dentro da pasta /workspace/app.
+
+ENTRYPOINT ["java","-cp","app:app/lib/*","com.generation.blogpessoal.BlogpessoalApplication"]
+#Executa o projeto Blog Pessoal.
